@@ -1,0 +1,1 @@
+module.exports = { sendEmailAlerts: async()=>({sent:0}), buildMissingPersonText: r=>"notif", buildFoundText: r=>"found", buildMissingPersonEmail: r=>({subject:"",html:"",plainText:""}), buildFoundEmail: r=>({subject:"",html:"",plainText:""}), buildSightingEmail: ()=>({subject:"",html:"",plainText:""}) };
