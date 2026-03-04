@@ -14,7 +14,7 @@ const connectDB = require('./config/db');
 const app = express();
 app.use(cors({
     origin:"https://frontend-9g7q.vercel.app",
-    credentials:true;
+    credentials:true
     }));
 app.use(express.json());
 const server = http.createServer(app);
