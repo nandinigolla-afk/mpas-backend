@@ -1,57 +1,56 @@
 'use strict';
 
-const nodemailer = require('nodemailer');
+// Brevo HTTP API — works on Render free tier (no SMTP ports needed)
+// Get your API key: brevo.com → Settings → API Keys → Generate
 
 const CLIENT = process.env.CLIENT_URL || 'http://localhost:3000';
-
-function _makeTransporter() {
-  // Brevo/SendGrid via SMTP (works on Render free tier — port 587 over TLS)
-  if (process.env.BREVO_USER && process.env.BREVO_PASS) {
-    console.log(`\n✅ Email service: Brevo (${process.env.BREVO_USER})\n`);
-    return nodemailer.createTransport({
-      host: 'smtp-relay.brevo.com',
-      port: 587,
-      secure: false,
-      auth: { user: process.env.BREVO_USER, pass: process.env.BREVO_PASS },
-    });
-  }
-
-  // Gmail via SSL port 465 (fallback — may still be blocked on Render free)
-  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-    const pass = process.env.EMAIL_PASS.replace(/\s+/g, '');
-    console.log(`\n✅ Email service: Gmail SSL (${process.env.EMAIL_USER})\n`);
-    return nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,   // SSL
-      auth: { user: process.env.EMAIL_USER, pass },
-    });
-  }
-
-  console.warn('\n⚠️  EMAIL NOT CONFIGURED\n');
-  return null;
-}
-
-const transporter = _makeTransporter();
-
-const FROM = process.env.EMAIL_FROM
-  || (process.env.BREVO_USER ? `"MPAS Alert" <${process.env.BREVO_USER}>` : null)
-  || (process.env.EMAIL_USER ? `"MPAS Alert" <${process.env.EMAIL_USER}>` : null)
-  || '"MPAS Alert" <alerts@mpas.community>';
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const FROM_EMAIL = process.env.EMAIL_USER || 'gollanandini45@gmail.com';
+const FROM_NAME  = 'MPAS Alert';
 
 async function sendEmail({ to, subject, html, text }) {
-  if (!transporter) {
-    console.log(`📧 [NOT SENT — no credentials] To: ${to} | Subject: ${subject}`);
+  if (!BREVO_API_KEY) {
+    console.log(`📧 [NOT SENT — no BREVO_API_KEY] To: ${to} | Subject: ${subject}`);
     return { success: false, reason: 'not_configured' };
   }
+
   try {
-    const info = await transporter.sendMail({ from: FROM, to, subject, html, text });
-    console.log(`📧 Sent → ${to} (id: ${info.messageId})`);
-    return { success: true, messageId: info.messageId };
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept':       'application/json',
+        'api-key':      BREVO_API_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender:   { name: FROM_NAME, email: FROM_EMAIL },
+        to:       [{ email: to }],
+        subject,
+        htmlContent: html,
+        textContent: text,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      console.log(`📧 Sent → ${to} (id: ${data.messageId})`);
+      return { success: true, messageId: data.messageId };
+    } else {
+      console.error(`❌ Email failed → ${to}:`, JSON.stringify(data));
+      return { success: false, error: JSON.stringify(data) };
+    }
   } catch (err) {
     console.error(`❌ Email failed → ${to}: ${err.message}`);
     return { success: false, error: err.message };
   }
+}
+
+// Log email status on startup
+if (BREVO_API_KEY) {
+  console.log(`\n✅ Email service: Brevo HTTP API (${FROM_EMAIL})\n`);
+} else {
+  console.warn('\n⚠️  EMAIL NOT CONFIGURED — add BREVO_API_KEY to Render environment\n');
 }
 
 function _fmt(d) {
@@ -144,9 +143,9 @@ function sightingVerifiedEmail(personName, locationName, reportId) {
     text: `${foundText} They were spotted near ${locationName}.`,
     html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#e8edf2;font-family:Arial,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#e8edf2;padding:24px 0"><tr><td align="center">
-<table width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;background:#fff;border-radius:16px;overflow:hidden">
+<table style="max-width:580px;background:#fff;border-radius:16px;overflow:hidden;width:100%">
   <tr><td style="background:#0D3B4C;padding:20px 28px"><span style="font-size:20px;font-weight:800;color:#fff">MPAS</span></td></tr>
-  <tr><td style="background:#16a34a;padding:12px 28px;text-align:center"><p style="margin:0;color:#fff;font-size:14px;font-weight:700">✅ PERSON FOUND</p></td></tr>
+  <tr><td style="background:#16a34a;padding:12px 28px;text-align:center"><p style="margin:0;color:#fff;font-weight:700">✅ PERSON FOUND</p></td></tr>
   <tr><td style="padding:32px 28px;text-align:center">
     <div style="font-size:52px;margin-bottom:14px">🎉</div>
     <h1 style="margin:0 0 10px;font-size:22px;color:#0D3B4C;font-weight:800">${personName} Has Been Found</h1>
@@ -156,8 +155,7 @@ function sightingVerifiedEmail(personName, locationName, reportId) {
     <a href="${CLIENT}/alerts/${reportId}" style="display:inline-block;background:#0D3B4C;color:#fff;padding:12px 28px;border-radius:50px;text-decoration:none;font-weight:700">View Case</a>
   </td></tr>
   <tr><td style="background:#0a1929;padding:14px 28px;text-align:center"><p style="margin:0;color:rgba(255,255,255,.4);font-size:11px">© 2026 MPAS</p></td></tr>
-</table></td></tr></table>
-</body></html>`,
+</table></td></tr></table></body></html>`,
   };
 }
 
@@ -177,8 +175,7 @@ function resolvedEmail(personName) {
       <p style="margin:0;color:#15803d;font-weight:600">${foundText}</p>
     </div>
   </td></tr>
-</table></td></tr></table>
-</body></html>`,
+</table></td></tr></table></body></html>`,
   };
 }
 
