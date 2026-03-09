@@ -13,22 +13,32 @@ const app    = express();
 const server = http.createServer(app);
 const PORT   = process.env.PORT || 5000;
 
-// ─────────────────────────────────────────────────────────────────────
-// CORS
-// Set CLIENT_URL on Render to your Vercel URL, e.g.:
-//   CLIENT_URL=https://mpas.vercel.app
-// Comma-separate multiple origins if needed:
-//   CLIENT_URL=https://mpas.vercel.app,https://mpas-git-main.vercel.app
-// Leave empty to allow ALL origins (fine for development).
-// ─────────────────────────────────────────────────────────────────────
+// Trust Render/Vercel proxy — fixes rate-limit X-Forwarded-For warning
+app.set('trust proxy', 1);
+
+// ── CORS ─────────────────────────────────────────────────────────────
+// Allows ALL vercel.app subdomains + any origin listed in CLIENT_URL
+// This handles preview deployments like frontend-9g7q-xxx.vercel.app
 function isAllowedOrigin(origin) {
-  if (!origin) return true;                          // curl / mobile native
+  if (!origin) return true; // curl / mobile app / no-origin requests
+
+  // Always allow any vercel.app subdomain (covers preview + production)
+  if (origin.endsWith('.vercel.app')) return true;
+
+  // Always allow any onrender.com subdomain
+  if (origin.endsWith('.onrender.com')) return true;
+
+  // Allow localhost for local dev
+  if (origin.startsWith('http://localhost')) return true;
+
+  // Allow anything explicitly listed in CLIENT_URL (comma-separated)
   const clientUrl = process.env.CLIENT_URL || '';
-  if (!clientUrl) return true;                       // nothing configured → open
-  return clientUrl
-    .split(',')
-    .map(s => s.trim().replace(/\/$/, ''))           // strip trailing slash
-    .some(allowed => origin.replace(/\/$/, '') === allowed);
+  if (clientUrl) {
+    const allowed = clientUrl.split(',').map(s => s.trim().replace(/\/$/, ''));
+    if (allowed.some(a => origin.replace(/\/$/, '') === a)) return true;
+  }
+
+  return false;
 }
 
 const corsOptions = {
@@ -44,18 +54,17 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
-// ─────────────────────────────────────────────────────────────────────
-// Socket.IO
-// Render free tier: WebSocket connections time-out after ~55s idle.
-// We start with polling so it ALWAYS works, then upgrade to WS if possible.
-// ─────────────────────────────────────────────────────────────────────
+// ── Socket.IO ─────────────────────────────────────────────────────────
 const io = new Server(server, {
   cors: {
-    origin(origin, cb) { if (isAllowedOrigin(origin)) cb(null, true); else cb(new Error('CORS')); },
+    origin(origin, cb) {
+      if (isAllowedOrigin(origin)) cb(null, true);
+      else cb(new Error('CORS'));
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   },
-  transports: ['polling', 'websocket'],   // polling first → always works
+  transports: ['polling', 'websocket'],
   allowEIO3: true,
   pingTimeout: 60000,
   pingInterval: 25000,
@@ -64,20 +73,17 @@ app.set('io', io);
 
 connectDB();
 
-// Email status is logged by config/email.js on startup
-
-// ─────────────────────────────────────────────────────────────────────
-// Middleware
-// ─────────────────────────────────────────────────────────────────────
+// ── Middleware ────────────────────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));          // handle preflight for ALL routes
+app.options('*', cors(corsOptions));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-const limiter     = rateLimit({ windowMs: 15 * 60 * 1000, max: 500 });
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 50 });
+// Rate limiting — trust proxy must be set above for this to work on Render
+const limiter     = rateLimit({ windowMs: 15 * 60 * 1000, max: 500, standardHeaders: true, legacyHeaders: false });
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 50,  standardHeaders: true, legacyHeaders: false });
 app.use('/api/', limiter);
 app.use('/api/auth/login', authLimiter);
 
@@ -89,9 +95,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/users',         require('./routes/users'));
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
-// ─────────────────────────────────────────────────────────────────────
-// Socket events
-// ─────────────────────────────────────────────────────────────────────
+// ── Socket events ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   socket.on('authenticate', (userId) => {
     if (!userId) return;
@@ -99,10 +103,7 @@ io.on('connection', (socket) => {
     socket.join('all_users');
     socket.data.userId = userId;
   });
-
   socket.on('join_admin', () => socket.join('admins'));
-
-  // Save user's GPS location to DB so proximity alerts work
   socket.on('update_location', async ({ userId, lat, lng }) => {
     if (!userId || lat == null || lng == null) return;
     try {
@@ -120,6 +121,7 @@ app.use((err, _req, res, _next) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n✅ MPAS running on port ${PORT}`);
-  console.log(`   CLIENT_URL: ${process.env.CLIENT_URL || '(open — all origins allowed)'}\n`);
+  console.log(`✅ MPAS running on port ${PORT}`);
+  console.log(`   CLIENT_URL: ${process.env.CLIENT_URL || '(not set — allowing all vercel.app origins)'}`);
+  console.log(`   EMAIL: ${process.env.EMAIL_USER ? '✅ ' + process.env.EMAIL_USER : '❌ NOT SET — add EMAIL_USER + EMAIL_PASS in Render Environment tab'}`);
 });
