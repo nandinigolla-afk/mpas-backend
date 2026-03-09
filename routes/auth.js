@@ -9,13 +9,12 @@ router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);
 
 
-// Test email — admin only. GET /api/auth/test-email?to=your@email.com
-router.get('/test-email', protect, async (req, res) => {
-  if (req.user.role !== 'admin')
-    return res.status(403).json({ success: false, message: 'Admin only' });
-
+// Test email — open route, no auth needed for testing
+// GET /api/auth/test-email?to=your@email.com
+router.get('/test-email', async (req, res) => {
   const { sendEmail } = require('../config/email');
-  const to = req.query.to || req.user.email;
+  const to = req.query.to;
+  if (!to) return res.status(400).json({ success: false, message: 'Add ?to=your@email.com to the URL' });
   const result = await sendEmail({
     to,
     subject: '✅ MPAS Email Test',

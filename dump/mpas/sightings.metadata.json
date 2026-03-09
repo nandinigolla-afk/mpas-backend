@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"location":"2dsphere"},"name":"location_2dsphere","background":true,"2dsphereIndexVersion":{"$numberInt":"3"}}],"uuid":"6a98ecce44724ec7bf0d1152992e1131","collectionName":"sightings","type":"collection"}

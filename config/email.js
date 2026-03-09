@@ -49,9 +49,8 @@ function _makeTransporter () {
   }
 
   // No credentials — log-only
-  console.warn('\n⚠️  EMAIL NOT CONFIGURED');
-  console.warn('   Emails will be printed to console instead of sent.');
-  console.warn('   → Create backend/.env with EMAIL_USER + EMAIL_PASS\n');
+  console.warn('\n⚠️  EMAIL NOT CONFIGURED — EMAIL_USER + EMAIL_PASS not set in environment variables.');
+  console.warn('   On Render: Dashboard → your service → Environment tab → add the vars → redeploy.\n');
   return null;
 }
 
