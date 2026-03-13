@@ -41,21 +41,35 @@ async function sendPush(subscription, payload) {
 
 // Send push to many users, clean up expired subscriptions
 async function sendPushToUsers(users, payload) {
-  if (!webpush) return;
+  if (!webpush) {
+    console.warn('⚠️  Web Push not configured — skipping push notifications');
+    return;
+  }
   const User = require('../models/User');
-  const withSub = users.filter(u => u.pushSubscription);
-  if (withSub.length === 0) return;
-  console.log(`🔔 Sending push to ${withSub.length} users...`);
+
+  // Re-fetch users with pushSubscription field explicitly
+  // (in case the caller's query didn't include it)
+  const userIds = users.map(u => u._id);
+  const freshUsers = await User.find({ _id: { $in: userIds }, pushSubscription: { $ne: null } })
+    .select('_id pushSubscription email');
+
+  if (freshUsers.length === 0) {
+    console.log('🔔 No users with push subscriptions');
+    return;
+  }
+
+  console.log(`🔔 Sending push to ${freshUsers.length} users...`);
 
   await Promise.allSettled(
-    withSub.map(async (u) => {
+    freshUsers.map(async (u) => {
       const result = await sendPush(u.pushSubscription, payload);
       if (result.expired) {
-        // Clean up invalid subscription
         await User.findByIdAndUpdate(u._id, { pushSubscription: null });
+        console.log(`🔔 Removed expired subscription for ${u.email}`);
       }
     })
   );
+  console.log(`🔔 Push sent to ${freshUsers.length} users`);
 }
 
 module.exports = { sendPush, sendPushToUsers, getVapidPublicKey: () => process.env.VAPID_PUBLIC_KEY || '' };
