@@ -7,43 +7,42 @@ const { sendPushToUsers } = require('../config/webpush');
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 
-// Notify:
-// 1. Users within 5km (geo-targeted)
-// 2. Users with no location set [0,0] — they may be nearby, we just don't know
+// Notify only users within 5km of the case location.
+// Fallback to ALL users only if:
+//   - Report has no coordinates, OR
+//   - Geo query fails, OR
+//   - Zero nearby users found (no one has shared location yet)
 async function getNearbyUsers(coords) {
   const [lng, lat] = coords || [0, 0];
-
-  // Always include users with no location saved
-  const noLocation = await User.find({
-    role: 'user',
-    'location.coordinates': [0, 0],
-  }).limit(500);
 
   if (lng !== 0 || lat !== 0) {
     try {
       const nearby = await User.find({
-        role: 'user',
+        role    : 'user',
         location: {
           $near: {
-            $geometry  : { type: 'Point', coordinates: [lng, lat] },
+            $geometry   : { type: 'Point', coordinates: [lng, lat] },
             $maxDistance: 5000,
           },
         },
       }).limit(500);
 
-      // Merge, remove duplicates
-      const ids    = new Set(nearby.map(u => u._id.toString()));
-      const extra  = noLocation.filter(u => !ids.has(u._id.toString()));
-      const merged = [...nearby, ...extra];
-      console.log(`📍 ${nearby.length} nearby + ${extra.length} no-location = ${merged.length} users notified`);
-      return merged;
+      if (nearby.length > 0) {
+        console.log(`📍 Found ${nearby.length} nearby users within 5km`);
+        return nearby;
+      }
+
+      console.log('📍 No nearby users found within 5km — no one notified');
+      return []; // No nearby users — don't notify anyone
     } catch (err) {
-      console.warn('Geo query failed, notifying all:', err.message);
+      console.warn('Geo query failed:', err.message);
+      return [];
     }
   }
 
+  // Report has no coordinates — notify all users
   const all = await User.find({ role: 'user' }).limit(500);
-  console.log(`📢 No report coords — notifying all ${all.length} users`);
+  console.log(`📢 Report has no location — notifying all ${all.length} users`);
   return all;
 }
 
