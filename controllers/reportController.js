@@ -7,25 +7,11 @@ const { sendPushToUsers } = require('../config/webpush');
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 
-// Get nearby users (within 5km) OR all users if no location data
+// Always notify ALL registered users
+// Missing person alerts are urgent — no one should be excluded
 async function getNearbyUsers(coords) {
-  const [lng, lat] = coords || [0, 0];
-  if (lng !== 0 || lat !== 0) {
-    try {
-      const nearby = await User.find({
-        role: 'user',
-        location: { $near: { $geometry: { type: 'Point', coordinates: [lng, lat] }, $maxDistance: 5000 } },
-      }).limit(500);
-      if (nearby.length > 0) {
-        console.log(`📍 Found ${nearby.length} nearby users within 5 km`);
-        return nearby;
-      }
-    } catch (err) {
-      console.warn('⚠️  Geo query failed, falling back to all users:', err.message);
-    }
-  }
-  const all = await User.find({ role: 'user' }).limit(500);
-  console.log(`📢 Broadcasting to all ${all.length} users (no geo match)`);
+  const all = await User.find({ role: 'user' }).limit(1000);
+  console.log(`📢 Notifying all ${all.length} registered users`);
   return all;
 }
 

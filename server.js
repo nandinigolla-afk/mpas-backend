@@ -94,6 +94,7 @@ app.use('/api/sightings',     require('./routes/sightings'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/users',         require('./routes/users'));
 app.use('/api/push',          require('./routes/push'));
+app.use('/api/debug',         require('./routes/debug')); // TEMP — remove after fix
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // ── Socket events ─────────────────────────────────────────────────────
