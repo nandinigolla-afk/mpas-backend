@@ -7,11 +7,43 @@ const { sendPushToUsers } = require('../config/webpush');
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 
-// Always notify ALL registered users
-// Missing person alerts are urgent — no one should be excluded
+// Notify:
+// 1. Users within 5km (geo-targeted)
+// 2. Users with no location set [0,0] — they may be nearby, we just don't know
 async function getNearbyUsers(coords) {
-  const all = await User.find({ role: 'user' }).limit(1000);
-  console.log(`📢 Notifying all ${all.length} registered users`);
+  const [lng, lat] = coords || [0, 0];
+
+  // Always include users with no location saved
+  const noLocation = await User.find({
+    role: 'user',
+    'location.coordinates': [0, 0],
+  }).limit(500);
+
+  if (lng !== 0 || lat !== 0) {
+    try {
+      const nearby = await User.find({
+        role: 'user',
+        location: {
+          $near: {
+            $geometry  : { type: 'Point', coordinates: [lng, lat] },
+            $maxDistance: 5000,
+          },
+        },
+      }).limit(500);
+
+      // Merge, remove duplicates
+      const ids    = new Set(nearby.map(u => u._id.toString()));
+      const extra  = noLocation.filter(u => !ids.has(u._id.toString()));
+      const merged = [...nearby, ...extra];
+      console.log(`📍 ${nearby.length} nearby + ${extra.length} no-location = ${merged.length} users notified`);
+      return merged;
+    } catch (err) {
+      console.warn('Geo query failed, notifying all:', err.message);
+    }
+  }
+
+  const all = await User.find({ role: 'user' }).limit(500);
+  console.log(`📢 No report coords — notifying all ${all.length} users`);
   return all;
 }
 
