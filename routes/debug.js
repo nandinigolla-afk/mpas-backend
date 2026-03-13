@@ -45,4 +45,20 @@ router.get('/nearby', async (req, res) => {
   }
 });
 
+// GET /api/debug/reports — show recent reports with their coordinates
+router.get('/reports', async (req, res) => {
+  try {
+    const Report = require('../models/Report');
+    const reports = await Report.find().sort({ createdAt: -1 }).limit(10)
+      .select('missingPerson.name status location locationName createdAt');
+    res.json({ reports: reports.map(r => ({
+      name       : r.missingPerson?.name,
+      status     : r.status,
+      locationName: r.locationName,
+      coordinates: r.location?.coordinates,
+      createdAt  : r.createdAt,
+    }))});
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
