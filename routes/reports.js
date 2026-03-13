@@ -35,4 +35,5 @@ router.post('/',      protect, upload.single('photo'), createReport);
 router.get('/:id',    optionalAuth,          getReportById);
 router.put('/:id/status', protect, adminOnly, updateReportStatus);
 
+router.delete('/:id', protect, adminOnly, deleteReport);
 module.exports = router;

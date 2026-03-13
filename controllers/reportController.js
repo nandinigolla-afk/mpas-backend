@@ -227,6 +227,21 @@ exports.updateReportStatus = async (req, res) => {
   }
 };
 
+exports.deleteReport = async (req, res) => {
+  try {
+    const report = await Report.findById(req.params.id);
+    if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
+    if (report.status !== 'resolved' && report.status !== 'rejected')
+      return res.status(400).json({ success: false, message: 'Only resolved or rejected reports can be deleted' });
+    await Notification.deleteMany({ report: report._id });
+    await Report.findByIdAndDelete(req.params.id);
+    console.log(`🗑️  Report deleted: ${report.missingPerson?.name} (${report._id})`);
+    res.json({ success: true, message: 'Report deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 exports.getStats = async (req, res) => {
   try {
     const [total, active, critical, resolved, pending] = await Promise.all([
